@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📊 Attendance Calculator</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea, #4d4d4d);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Segoe UI", sans-serif;
+    }
+    .card {
+      border-radius: 20px;
+      box-shadow: 0px 6px 20px rgba(0,0,0,0.25);
+      width: 100%;
+      max-width: 650px;
+    }
+    .btn-custom {
+      background-color: #343434;
+      color: white;
+      border-radius: 10px;
+      font-weight: 600;
+      transition: 0.3s;
+    }
+    .btn-custom:hover {
+      background-color: #718BEA;
+      transform: scale(1.05);
+    }
+    .progress {
+      position: relative;
+      height: 35px;
+      font-size: 14px;
+      background: #333;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      transition: width 2s ease-in-out;
+    }
+    /* Goal Marker 🎯 */
+    .goal-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: red;
+      z-index: 10;
+    }
+    .goal-label {
+      position: absolute;
+      top: -22px;
+      transform: translateX(-50%);
+      font-size: 13px;
+      font-weight: bold;
+      color: red;
+    }
+    /* Badge */
+    .goal-badge {
+      margin-top: 10px;
+      font-size: 1rem;
+      font-weight: bold;
+      padding: 8px 15px;
+      border-radius: 20px;
+      background: #28a745;
+      color: white;
+      display: inline-block;
+      animation: pop 0.6s ease;
+    }
+    @keyframes pop {
+      0% { transform: scale(0.5); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card p-4 bg-dark text-white">
+      <h2 class="text-center mb-4">📊 Attendance Calculator</h2>
+
+      <!-- Form -->
+      <form id="calcForm">
+        <div class="mb-3">
+          <label class="form-label">Current Percentage (%)</label>
+          <input type="number" step="0.01" id="percentage" class="form-control" placeholder="e.g., 75" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Required Percentage (%)</label>
+          <input type="number" step="0.01" id="required" class="form-control" placeholder="e.g., 85" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Total Working Days</label>
+          <input type="number" step="1" id="total_days" class="form-control" placeholder="e.g., 180" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Remaining Days</label>
+          <input type="number" step="1" id="remaining_days" class="form-control" placeholder="e.g., 30" required>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-custom flex-fill">Calculate</button>
+          <button type="reset" class="btn btn-secondary flex-fill" onclick="resetAll()">Reset</button>
+        </div>
+      </form>
+
+      <!-- Result -->
+      <div id="resultBox" class="mt-3" style="display:none;">
+        <div id="resultMsg" class="alert"></div>
+
+        <!-- Progress -->
+        <div class="mt-4">
+          <h6 class="mb-2">📈 Progress towards your goal:</h6>
+          <div class="progress position-relative">
+            <div id="progressBar" class="progress-bar" role="progressbar" style="width:0%;">0%</div>
+            <div id="goalMarker" class="goal-marker"></div>
+            <div id="goalLabel" class="goal-label"></div>
+          </div>
+          <div class="text-center" id="goalBadge" style="display:none;">
+            <span class="goal-badge">🎉 Goal Achieved! 🎯</span>
+          </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="mt-4 text-center">
+          <canvas id="chartCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+function resetAll() {
+  document.getElementById("resultBox").style.display = "none";
+  if (window.chartObj) window.chartObj.destroy();
+}
+
+document.getElementById("calcForm").addEventListener("submit", function(e){
+  e.preventDefault();
+
+  let percentage = parseFloat(document.getElementById("percentage").value);
+  let required   = parseFloat(document.getElementById("required").value);
+  let total_days = parseInt(document.getElementById("total_days").value);
+  let remaining_days = parseInt(document.getElementById("remaining_days").value);
+
+  let resultMsg = document.getElementById("resultMsg");
+  let resultBox = document.getElementById("resultBox");
+  let goalBadge = document.getElementById("goalBadge");
+
+  resultBox.style.display = "block";
+  goalBadge.style.display = "none";
+
+  if (!(0 < percentage && percentage <= 100)) {
+    resultMsg.className = "alert alert-danger";
+    resultMsg.innerText = "❌ Percentage must be between 0 and 100.";
+    return;
+  }
+  if (!(0 < required && required <= 100)) {
+    resultMsg.className = "alert alert-danger";
+    resultMsg.innerText = "❌ Required percentage must be between 0 and 100.";
+    return;
+  }
+  if (total_days <= 0) {
+    resultMsg.className = "alert alert-danger";
+    resultMsg.innerText = "❌ Total working days must be greater than 0.";
+    return;
+  }
+  if (remaining_days < 0) {
+    resultMsg.className = "alert alert-danger";
+    resultMsg.innerText = "❌ Remaining days cannot be negative.";
+    return;
+  }
+
+  let current_days = (percentage / 100) * total_days;
+  let required_days = (required / 100) * total_days;
+  let goalAchieved = false;
+  let message = "";
+  let alertClass = "alert-info";
+
+  if (required_days > current_days) {
+    let needed = required_days - current_days;
+    if (needed <= remaining_days) {
+      message = `✅ You need ${needed.toFixed(2)} more days. You can achieve ${required}% with ${remaining_days} days left!`;
+      alertClass = "alert-success";
+    } else {
+      message = `❌ You need ${needed.toFixed(2)} more days, but only ${remaining_days} days are left. Not possible.`;
+      alertClass = "alert-danger";
+    }
+  } else if (required_days < current_days) {
+    message = `🎉 You already have ${(current_days - required_days).toFixed(2)} extra days than needed for ${required}%.`;
+    alertClass = "alert-success";
+    goalAchieved = true;
+  } else {
+    message = `👌 You are exactly on track to reach ${required}%.`;
+    alertClass = "alert-info";
+    goalAchieved = true;
+  }
+
+  if (percentage >= required) {
+    goalAchieved = true;
+  }
+
+  resultMsg.className = "alert " + alertClass;
+  resultMsg.innerText = message;
+
+  // Progress Bar animation
+  let bar = document.getElementById("progressBar");
+  let current = 0;
+  let step = percentage / 50;
+  let interval = setInterval(() => {
+    current += step;
+    if (current >= percentage) {
+      current = percentage;
+      clearInterval(interval);
+      if (goalAchieved) {
+        goalBadge.style.display = "block";
+        launchConfetti();
+      }
+    }
+    bar.style.width = current + "%";
+    bar.innerText = Math.round(current) + "%";
+  }, 40);
+
+  // Goal Marker
+  document.getElementById("goalMarker").style.left = required + "%";
+  document.getElementById("goalLabel").style.left = required + "%";
+  document.getElementById("goalLabel").innerText = `🎯 ${required}%`;
+
+  // Chart.js
+  if (window.chartObj) window.chartObj.destroy();
+  let ctx = document.getElementById("chartCanvas").getContext("2d");
+  window.chartObj = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ["Current %", "Required %"],
+      datasets: [{
+        label: "Percentage",
+        data: [percentage, required],
+        backgroundColor: ["green", "orange"]
+      }]
+    },
+    options: {
+      scales: { y: { min: 0, max: 100 } }
+    }
+  });
+});
+
+// Confetti 🎉
+function launchConfetti() {
+  var duration = 2 * 1000;
+  var end = Date.now() + duration;
+  (function frame() {
+    confetti({ particleCount: 6, angle: 60, spread: 55, origin: { x: 0 } });
+    confetti({ particleCount: 6, angle: 120, spread: 55, origin: { x: 1 } });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  })();
+}
+</script>
+</body>
+</html>
